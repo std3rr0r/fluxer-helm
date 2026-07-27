@@ -1,0 +1,227 @@
+global:
+  domain: chat.example.com
+  publicScheme: https
+  publicPort: 443
+
+image:
+  registry: ghcr.io/fluxerapp
+  tag: v1
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+secrets:
+  existingSecret: ""
+  vapid:
+    publicKey: ""
+    privateKey: ""
+    email: admin@example.com
+  meiliMasterKey: ""
+  s3AccessKey: "fluxer"
+  s3SecretKey: ""
+  sudoModeSecret: ""
+  connectionInitiationSecret: ""
+  gatewayRpcAuthToken: ""
+  mediaProxySecretKey: ""
+  mediaProxyUploadRelaySecretBase64: ""
+  adminSecretKeyBase: ""
+  adminOauthClientSecret: ""
+  klipyApiKey: ""
+  livekitApiKey: "fluxer"
+  livekitApiSecret: ""
+
+postgres:
+  enabled: true
+  clusterName: ""
+  instances: 1
+  imageName: ""
+  database: fluxer
+  owner: fluxer
+  storage:
+    size: 20Gi
+    storageClass: ""
+  walStorage:
+    enabled: false
+    size: 5Gi
+    storageClass: ""
+  resources: {}
+  parameters: {}
+  extraSpec: {}
+  external:
+    host: ""
+    port: 5432
+    database: fluxer
+    username: fluxer
+    passwordSecret: ""
+    passwordSecretKey: password
+    ssl: false
+
+valkey:
+  enabled: true
+  name: ""
+  shards: 3
+  replicas: 1
+  image: ""
+  imagePullSecrets: []
+  username: fluxer
+  password: ""
+  permissions: "+@all ~* &*"
+  prometheus: false
+  tlsSecretName: ""
+  storage:
+    size: 2Gi
+    storageClass: ""
+    reclaimPolicy: Retain
+  resources: {}
+  config: {}
+  scheduling: {}
+  extraSpec: {}
+  external:
+    url: ""
+
+nats:
+  image: nats:2.14-alpine
+  storage:
+    size: 5Gi
+    storageClass: ""
+  resources: {}
+
+meilisearch:
+  image: getmeili/meilisearch:v1.12
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources: {}
+
+seaweedfs:
+  image: chrislusf/seaweedfs:4.34
+  storage:
+    size: 50Gi
+    storageClass: ""
+  resources: {}
+  buckets:
+    - fluxer
+    - fluxer-uploads
+    - fluxer-downloads
+    - fluxer-reports
+    - fluxer-harvests
+
+livekit:
+  enabled: true
+  image: livekit/livekit-server:v1.12.0
+  logLevel: info
+  rtc:
+    tcpPort: 7881
+    udpPort: 7882
+    useExternalIP: true
+    stunServers:
+      - stun.l.google.com:19302
+      - stun1.l.google.com:19302
+  media:
+    mode: LoadBalancer
+    annotations: {}
+    nodePortTCP: 30881
+    nodePortUDP: 30882
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+
+httpRoute:
+  enabled: true
+  apiVersion: gateway.networking.k8s.io/v1
+  parentRefs: []
+  hostnames: []
+  annotations: {}
+  labels: {}
+  timeouts:
+    request: ""
+    backendRequest: ""
+  staticPrefixes:
+    - /fonts
+    - /web
+    - /emoji
+    - /libs
+    - /avatars
+    - /badges
+    - /desktop
+    - /embeds
+  extraRules: []
+
+email:
+  enabled: false
+  provider: none
+  fromEmail: noreply@example.com
+  fromName: Fluxer
+  smtp:
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    secure: true
+
+captcha:
+  enabled: false
+  provider: none
+
+discovery:
+  enabled: true
+
+svcShardCount: 1
+
+services:
+  api:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  worker:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  gateway:
+    replicas: 1
+    logLevel: info
+    resources: {}
+    extraEnv: []
+  mediaProxy:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  staticProxy:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  appProxy:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  admin:
+    replicas: 1
+    resources: {}
+    extraEnv: []
+  snowflakes:
+    routerReplicas: 1
+    resources: {}
+    extraEnv: []
+  users:
+    routerReplicas: 1
+    resources: {}
+    extraEnv: []
+  messages:
+    routerReplicas: 1
+    resources: {}
+    extraEnv: []
+  gifs:
+    routerReplicas: 1
+    resources: {}
+    extraEnv: []
+  unfurl:
+    routerReplicas: 1
+    resources: {}
+    extraEnv: []
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+commonLabels: {}
+podSecurityContext:
+  runAsNonRoot: false

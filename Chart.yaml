@@ -1,0 +1,10 @@
+apiVersion: v2
+name: fluxer
+description: >-
+ Fluxer Self-hosted. This is a community project and not affiliated with Fluxer Platform AB.
+type: application
+version: 0.0.1
+appVersion: "v1"
+sources:
+  - https://github.com/fluxerapp/fluxer
+kubeVersion: ">=1.25.0-0"
