@@ -82,8 +82,8 @@ spec:
       timeouts:
         {{- if $r.websocket }}
         request: {{ default "0s" $t.request | quote }}
-        {{- else with $t.request }}
-        request: {{ . | quote }}
+        {{- else if $t.request }}
+        request: {{ $t.request | quote }}
         {{- end }}
         {{- with $t.backendRequest }}
         backendRequest: {{ . | quote }}
