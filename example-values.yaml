@@ -1,0 +1,99 @@
+# Example values for the fluxer chart.
+
+global:
+  domain: chat.example.com
+  publicScheme: https
+  publicPort: 443
+
+image:
+  tag: v1 
+secrets:
+  vapid:
+    publicKey: "REPLACE_ME"    # from web-push generate-vapid-keys
+    privateKey: "REPLACE_ME"
+    email: admin@example.com
+
+postgres:
+  instances: 3
+  storage:
+    size: 50Gi
+    storageClass: fast-ssd
+  walStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: fast-ssd
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      memory: 4Gi
+  parameters:
+    max_connections: "300"
+    shared_buffers: 512MB
+
+valkey:
+  shards: 3
+  replicas: 1
+  storage:
+    size: 4Gi
+    storageClass: fast-ssd
+    reclaimPolicy: Retain
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+
+seaweedfs:
+  storage:
+    size: 200Gi
+    storageClass: bulk-hdd
+
+livekit:
+  media:
+    mode: LoadBalancer
+    annotations: {}
+
+httpRoute:
+  parentRefs:
+    - name: my-gateway
+      namespace: gateway-system
+      sectionName: https
+  timeouts:
+    backendRequest: "300s"
+
+
+email:
+  enabled: true
+  provider: smtp
+  fromEmail: noreply@example.com
+  fromName: Fluxer
+  smtp:
+    host: smtp.example.com
+    port: 587
+    username: fluxer
+    password: "REPLACE_ME"
+    secure: true
+
+services:
+  api:
+    replicas: 2
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {memory: 2Gi}
+  gateway:
+    replicas: 2
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {memory: 2Gi}
+  mediaProxy:
+    replicas: 2
+  appProxy:
+    replicas: 2
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

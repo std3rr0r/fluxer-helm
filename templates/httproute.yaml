@@ -1,0 +1,121 @@
+{{- if .Values.httpRoute.enabled }}
+{{- if not .Values.httpRoute.parentRefs }}
+{{- fail "httpRoute.parentRefs must reference at least one Gateway. Fluxer is exposed exclusively through the Gateway API; create a Gateway (with the TLS listener and certificate) and reference it here, or set httpRoute.enabled=false to manage the HTTPRoute yourself." }}
+{{- end }}
+{{- $fullname := include "fluxer.fullname" . -}}
+{{- $hostnames := default (list .Values.global.domain) .Values.httpRoute.hostnames -}}
+{{- $t := .Values.httpRoute.timeouts -}}
+apiVersion: {{ .Values.httpRoute.apiVersion }}
+kind: HTTPRoute
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    {{- with .Values.httpRoute.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- range .Values.httpRoute.parentRefs }}
+    - name: {{ required "each httpRoute.parentRefs entry needs a name" .name }}
+      {{- with .namespace }}
+      namespace: {{ . }}
+      {{- end }}
+      {{- with .sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+      {{- with .port }}
+      port: {{ . }}
+      {{- end }}
+      {{- with .kind }}
+      kind: {{ . }}
+      {{- end }}
+      {{- with .group }}
+      group: {{ . }}
+      {{- end }}
+    {{- end }}
+  hostnames:
+    {{- range $hostnames }}
+    - {{ . | quote }}
+    {{- end }}
+  rules:
+    {{- $routes := list
+      (dict "prefix" "/api"     "svc" (printf "%s-api" $fullname)          "port" 8080 "strip" true)
+      (dict "exact"  "/gateway" "svc" (printf "%s-gateway" $fullname)      "port" 8080 "websocket" true)
+      (dict "prefix" "/gateway" "svc" (printf "%s-gateway" $fullname)      "port" 8080 "strip" true "websocket" true)
+      (dict "prefix" "/media"   "svc" (printf "%s-media-proxy" $fullname)  "port" 8080 "strip" true)
+      (dict "exact"  "/admin"   "svc" (printf "%s-admin" $fullname)        "port" 8080)
+      (dict "prefix" "/admin"   "svc" (printf "%s-admin" $fullname)        "port" 8080 "strip" true)
+    -}}
+    {{- if .Values.livekit.enabled }}
+    {{- $routes = append $routes (dict "prefix" "/livekit" "svc" (printf "%s-livekit" $fullname) "port" 7880 "strip" true "websocket" true) }}
+    {{- end }}
+    {{- range $r := $routes }}
+    - matches:
+        - path:
+            {{- if $r.exact }}
+            type: Exact
+            value: {{ $r.exact }}
+            {{- else }}
+            type: PathPrefix
+            value: {{ $r.prefix }}
+            {{- end }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              {{- if $r.exact }}
+              type: ReplaceFullPath
+              replaceFullPath: /
+              {{- else }}
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+              {{- end }}
+      backendRefs:
+        - name: {{ $r.svc }}
+          port: {{ $r.port }}
+      {{- if or $t.request $t.backendRequest $r.websocket }}
+      timeouts:
+        {{- if $r.websocket }}
+        request: {{ default "0s" $t.request | quote }}
+        {{- else with $t.request }}
+        request: {{ . | quote }}
+        {{- end }}
+        {{- with $t.backendRequest }}
+        backendRequest: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    - matches:
+        {{- range $p := .Values.httpRoute.staticPrefixes }}
+        - path:
+            type: PathPrefix
+            value: {{ $p }}
+        {{- end }}
+      backendRefs:
+        - name: {{ $fullname }}-static-proxy
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullname }}-app-proxy
+          port: 8080
+      {{- if or $t.request $t.backendRequest }}
+      timeouts:
+        {{- with $t.request }}
+        request: {{ . | quote }}
+        {{- end }}
+        {{- with $t.backendRequest }}
+        backendRequest: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+{{- with .Values.httpRoute.extraRules }}
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}

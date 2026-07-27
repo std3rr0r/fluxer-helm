@@ -1,0 +1,32 @@
+Fluxer has been deployed.
+
+  Instance:  {{ include "fluxer.publicOrigin" . }}
+  Admin:     {{ include "fluxer.publicOrigin" . }}/admin
+
+Operator-managed data services:
+  Postgres (CloudNativePG):  Cluster/{{ include "fluxer.pgClusterName" . }}  (rw service: {{ include "fluxer.pgHost" . }})
+  Valkey (valkey-io):        ValkeyCluster/{{ include "fluxer.valkeyName" . }}
+
+First start can take several minutes. Watch it:
+
+  kubectl -n {{ .Release.Namespace }} get pods -w
+  kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "fluxer.fullname" . }}-api
+
+Verify the public entry points once DNS points at your Gateway:
+
+  for p in /_health /api/_health /gateway/_health /media/_health /admin/_health; do
+    curl -fsS -o /dev/null -w "$p %{http_code}\n" "{{ include "fluxer.publicOrigin" . }}$p"
+  done
+
+The FIRST registered account receives wildcard admin access — register it
+yourself immediately at {{ include "fluxer.publicOrigin" . }}.
+
+{{- if .Values.livekit.enabled }}
+
+Voice/video: LiveKit signaling is routed at /livekit. WebRTC media uses
+{{ .Values.livekit.rtc.tcpPort }}/tcp and {{ .Values.livekit.rtc.udpPort }}/udp via mode "{{ .Values.livekit.media.mode }}"
+{{- if eq .Values.livekit.media.mode "LoadBalancer" }}
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "fluxer.fullname" . }}-livekit-media
+Ensure that LoadBalancer supports mixed TCP/UDP, or switch to hostNetwork/NodePort.
+{{- end }}
+{{- end }}

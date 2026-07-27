@@ -1,0 +1,115 @@
+{{- $origin := include "fluxer.publicOrigin" . -}}
+{{- $fullname := include "fluxer.fullname" . -}}
+
+{{/* ---------------- api ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "api" "svc" .Values.services.api "image" "fluxer-api"
+  "replicas" .Values.services.api.replicas "commonEnv" true
+  "port" 8080 "probePath" "/_health"
+  "env" (list
+    (dict "name" "FLUXER_API_PORT" "value" "8080")
+    (dict "name" "FLUXER_API_PRESIGNED_ATTACHMENT_UPLOADS_ENABLED" "value" "true"))) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "api") }}
+---
+{{/* ---------------- worker ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "worker" "svc" .Values.services.worker "image" "fluxer-api"
+  "replicas" .Values.services.worker.replicas "commonEnv" true
+  "workingDir" "/usr/src/app/fluxer_api"
+  "command" (list "./node_modules/.bin/tsx" "src/WorkerEntrypoint.ts")
+  "env" (list
+    (dict "name" "FLUXER_API_WORKER_MODE" "value" "all_lanes")
+    (dict "name" "FLUXER_API_WORKER_ENABLE_CRON_SCHEDULER" "value" "true")
+    (dict "name" "FLUXER_API_WORKER_ENABLE_VOICE_RECONCILIATION" "value" "true"))) }}
+---
+{{/* ---------------- gateway ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "gateway" "svc" .Values.services.gateway "image" "fluxer-gateway"
+  "replicas" .Values.services.gateway.replicas "commonEnv" true
+  "port" 8080 "probePath" "/_health"
+  "env" (list
+    (dict "name" "FLUXER_GATEWAY_PORT" "value" "8080")
+    (dict "name" "FLUXER_GATEWAY_MEDIA_PROXY_ENDPOINT" "value" (printf "%s/media" $origin))
+    (dict "name" "FLUXER_GATEWAY_STATIC_CDN_ENDPOINT" "value" $origin)
+    (dict "name" "FLUXER_GATEWAY_LOGGER_LEVEL" "value" .Values.services.gateway.logLevel))) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "gateway") }}
+---
+{{/* ---------------- media-proxy ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "media-proxy" "svc" .Values.services.mediaProxy "image" "fluxer-media-proxy"
+  "replicas" .Values.services.mediaProxy.replicas "commonEnv" true
+  "port" 8080
+  "env" (list
+    (dict "name" "FLUXER_MEDIA_PROXY_HOST" "value" "0.0.0.0")
+    (dict "name" "FLUXER_MEDIA_PROXY_PORT" "value" "8080")
+    (dict "name" "FLUXER_MEDIA_PROXY_MODE" "value" "upload")
+    (dict "name" "FLUXER_MEDIA_PROXY_STORAGE_BACKEND" "value" "s3"))) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "media-proxy") }}
+---
+{{/* ---------------- static-proxy (no fluxer env in upstream compose) ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "static-proxy" "svc" .Values.services.staticProxy "image" "fluxer-static"
+  "replicas" .Values.services.staticProxy.replicas "commonEnv" false
+  "port" 8080 "env" (list)) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "static-proxy") }}
+---
+{{/* ---------------- app-proxy (own env only, like upstream) ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "app-proxy" "svc" .Values.services.appProxy "image" "fluxer-app-proxy-self-hosted"
+  "replicas" .Values.services.appProxy.replicas "commonEnv" false
+  "port" 8080
+  "env" (list
+    (dict "name" "FLUXER_APP_PROXY_HOST" "value" "0.0.0.0")
+    (dict "name" "FLUXER_APP_PROXY_PORT" "value" "8080")
+    (dict "name" "DISCOVERY_UPSTREAM_URL" "value" (printf "http://%s-api:8080/.well-known/fluxer" $fullname))
+    (dict "name" "PUBLIC_BOOTSTRAP_API_ENDPOINT" "value" "/api")
+    (dict "name" "PUBLIC_BOOTSTRAP_API_PUBLIC_ENDPOINT" "value" (printf "%s/api" $origin)))) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "app-proxy") }}
+---
+{{/* ---------------- admin ---------------- */}}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" "admin" "svc" .Values.services.admin "image" "fluxer-admin"
+  "replicas" .Values.services.admin.replicas "commonEnv" true
+  "port" 8080
+  "env" (list
+    (dict "name" "FLUXER_ADMIN_HOST" "value" "0.0.0.0")
+    (dict "name" "FLUXER_ADMIN_PORT" "value" "8080")
+    (dict "name" "FLUXER_ADMIN_BASE_PATH" "value" "/admin")
+    (dict "name" "FLUXER_API_ENDPOINT" "value" (printf "http://%s-api:8080" $fullname))
+    (dict "name" "FLUXER_ADMIN_ENDPOINT" "value" (printf "%s/admin" $origin))
+    (dict "name" "FLUXER_APP_ENDPOINT" "value" $origin)
+    (dict "name" "FLUXER_STATIC_CDN_ENDPOINT" "value" $origin)
+    (dict "name" "FLUXER_ADMIN_OAUTH_REDIRECT_URI" "value" (printf "%s/admin/oauth2_callback" $origin)))) }}
+---
+{{ include "fluxer.service" (dict "root" $ "name" "admin") }}
+---
+{{/* ---------------- router/shard microservices ---------------- */}}
+{{- range $svcName := list "snowflakes" "users" "messages" "gifs" "unfurl" }}
+{{- $cfg := index $.Values.services $svcName }}
+{{- $gifsEnv := list }}
+{{- if eq $svcName "gifs" }}
+{{- $gifsEnv = list
+      (dict "name" "FLUXER_SVC_NAME" "value" "gifs")
+      (dict "name" "FLUXER_MEDIA_PROXY_PUBLIC_ENDPOINT" "value" (printf "%s/media" $origin)) }}
+{{- end }}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" $svcName "svc" $cfg "image" (printf "fluxer-%s" $svcName)
+  "replicas" $cfg.routerReplicas "commonEnv" true
+  "env" (concat $gifsEnv (list (dict "name" "FLUXER_SVC_MODE" "value" "router")))) }}
+---
+{{- range $shard := until (int $.Values.svcShardCount) }}
+{{ include "fluxer.deployment" (dict
+  "root" $ "name" (printf "%s-shard-%d" $svcName $shard) "svc" $cfg
+  "image" (printf "fluxer-%s" $svcName)
+  "replicas" 1 "commonEnv" true
+  "env" (concat $gifsEnv (list
+    (dict "name" "FLUXER_SVC_MODE" "value" "shard")
+    (dict "name" "FLUXER_SVC_SHARD_ID" "value" (printf "%d" $shard))))) }}
+---
+{{- end }}
+{{- end }}

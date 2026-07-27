@@ -1,0 +1,118 @@
+name: chart
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CHART_DIR: .
+  CI_SET: >-
+    --set global.domain=ci.example.com
+    --set secrets.vapid.publicKey=ci-public
+    --set secrets.vapid.privateKey=ci-private
+    --set httpRoute.parentRefs[0].name=ci-gateway
+    --set httpRoute.parentRefs[0].namespace=gateway-system
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.4
+
+      - name: helm lint
+        run: helm lint "$CHART_DIR" $CI_SET
+
+      - name: Render with default values
+        run: helm template ci "$CHART_DIR" $CI_SET > /tmp/default.yaml
+
+      - name: Render with example values
+        run: |
+          helm template ci "$CHART_DIR" \
+            -f "$CHART_DIR/example-values.yaml" \
+            --set secrets.vapid.publicKey=ci-public \
+            --set secrets.vapid.privateKey=ci-private \
+            > /tmp/example.yaml
+
+      - name: Validate manifests against the Kubernetes API
+        run: |
+          curl -sSLo /usr/local/bin/kubeconform.tgz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xzf /usr/local/bin/kubeconform.tgz -C /usr/local/bin kubeconform
+          for f in /tmp/default.yaml /tmp/example.yaml; do
+            echo "== $f"
+            kubeconform -strict -summary -ignore-missing-schemas "$f"
+          done
+
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests
+          path: /tmp/*.yaml
+          retention-days: 7
+
+  publish:
+    needs: lint
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.4
+
+      - name: Check the tag matches Chart.yaml
+        run: |
+          chart_version=$(helm show chart "$CHART_DIR" | awk '/^version:/ {print $2}')
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "Chart.yaml=$chart_version  tag=$tag_version"
+          if [ "$chart_version" != "$tag_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Chart.yaml version $chart_version"
+            exit 1
+          fi
+          echo "CHART_VERSION=$chart_version" >> "$GITHUB_ENV"
+
+      - name: Package
+        run: helm package "$CHART_DIR" --destination dist
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push to GHCR
+        id: push
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          out=$(helm push "dist/fluxer-${CHART_VERSION}.tgz" "oci://ghcr.io/${owner}/charts" 2>&1 | tee /dev/stderr)
+          digest=$(echo "$out" | awk '/Digest:/ {print $2}')
+          echo "ref=ghcr.io/${owner}/charts/fluxer" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4
+
+      - name: Sign the chart (keyless)
+        run: cosign sign --yes "${{ steps.push.outputs.ref }}@${{ steps.push.outputs.digest }}"
+
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          \`\`\`sh
+          helm install fluxer oci://${{ steps.push.outputs.ref }} --version $CHART_VERSION
+          \`\`\`
+
+          Digest: \`${{ steps.push.outputs.digest }}\`
+          EOF
