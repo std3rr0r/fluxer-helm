@@ -1,0 +1,145 @@
+{{- if .Values.livekit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxer.fullname" . }}-livekit
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+data:
+  livekit.yaml: |
+    port: 7880
+    log_level: {{ .Values.livekit.logLevel }}
+    rtc:
+      tcp_port: {{ .Values.livekit.rtc.tcpPort }}
+      udp_port: {{ .Values.livekit.rtc.udpPort }}
+      use_external_ip: {{ .Values.livekit.rtc.useExternalIP }}
+      stun_servers:
+        {{- range .Values.livekit.rtc.stunServers }}
+        - {{ . }}
+        {{- end }}
+    webhook:
+      api_key: {{ .Values.secrets.livekitApiKey }}
+      urls:
+        - http://{{ include "fluxer.fullname" . }}-api:8080/webhooks/livekit
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fluxer.fullname" . }}-livekit
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+spec:
+  type: ClusterIP
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: 7880
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" $ "component" "livekit") | nindent 4 }}
+{{- if or (eq .Values.livekit.media.mode "LoadBalancer") (eq .Values.livekit.media.mode "NodePort") }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fluxer.fullname" . }}-livekit-media
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+  {{- with .Values.livekit.media.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.livekit.media.mode }}
+  externalTrafficPolicy: Local
+  ports:
+    - name: rtc-tcp
+      port: {{ .Values.livekit.rtc.tcpPort }}
+      targetPort: {{ .Values.livekit.rtc.tcpPort }}
+      protocol: TCP
+      {{- if eq .Values.livekit.media.mode "NodePort" }}
+      nodePort: {{ .Values.livekit.media.nodePortTCP }}
+      {{- end }}
+    - name: rtc-udp
+      port: {{ .Values.livekit.rtc.udpPort }}
+      targetPort: {{ .Values.livekit.rtc.udpPort }}
+      protocol: UDP
+      {{- if eq .Values.livekit.media.mode "NodePort" }}
+      nodePort: {{ .Values.livekit.media.nodePortUDP }}
+      {{- end }}
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" $ "component" "livekit") | nindent 4 }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fluxer.fullname" . }}-livekit
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" $ "component" "livekit") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" $ "component" "livekit") | nindent 8 }}
+      annotations:
+        checksum/config: {{ pick .Values "livekit" | toYaml | sha256sum | trunc 32 }}
+    spec:
+      {{- if eq .Values.livekit.media.mode "hostNetwork" }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      containers:
+        - name: livekit
+          image: {{ .Values.livekit.image }}
+          args: ["--config", "/etc/livekit.yaml"]
+          env:
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fluxer.secretName" . }}
+                  key: LIVEKIT_API_SECRET
+            - name: LIVEKIT_KEYS
+              value: "{{ .Values.secrets.livekitApiKey }}: $(LIVEKIT_API_SECRET)"
+          ports:
+            - containerPort: 7880
+              name: signal
+              protocol: TCP
+            - containerPort: {{ .Values.livekit.rtc.tcpPort }}
+              name: rtc-tcp
+              protocol: TCP
+            - containerPort: {{ .Values.livekit.rtc.udpPort }}
+              name: rtc-udp
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit.yaml
+              subPath: livekit.yaml
+              readOnly: true
+          {{- with .Values.livekit.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "fluxer.fullname" . }}-livekit
+      {{- with .Values.livekit.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.livekit.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

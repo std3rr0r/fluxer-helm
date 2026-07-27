@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fluxer.fullname" . }}-meilisearch
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: meilisearch
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 7700
+      targetPort: 7700
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" $ "component" "meilisearch") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fluxer.fullname" . }}-meilisearch
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: meilisearch
+spec:
+  serviceName: {{ include "fluxer.fullname" . }}-meilisearch
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" $ "component" "meilisearch") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" $ "component" "meilisearch") | nindent 8 }}
+    spec:
+      containers:
+        - name: meilisearch
+          image: {{ .Values.meilisearch.image }}
+          env:
+            - name: MEILI_ENV
+              value: production
+            - name: MEILI_NO_ANALYTICS
+              value: "true"
+            - name: MEILI_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fluxer.secretName" . }}
+                  key: MEILI_MASTER_KEY
+          ports:
+            - containerPort: 7700
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 7700
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /meili_data
+          {{- with .Values.meilisearch.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.meilisearch.storage.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.meilisearch.storage.size }}
