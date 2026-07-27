@@ -26,6 +26,35 @@
 {{- printf "%s-users" (include "fluxer.valkeyName" .) -}}
 {{- end -}}
 
+{{- define "fluxer.pgHost" -}}
+{{- if .Values.postgres.enabled -}}
+{{- printf "%s-rw" (include "fluxer.pgClusterName" .) -}}
+{{- else -}}
+{{- required "postgres.external.host is required when postgres.enabled=false" .Values.postgres.external.host -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "fluxer.pgSecretName" -}}
+{{- if .Values.postgres.enabled -}}
+{{- printf "%s-app" (include "fluxer.pgClusterName" .) -}}
+{{- else -}}
+{{- required "postgres.external.passwordSecret is required when postgres.enabled=false" .Values.postgres.external.passwordSecret -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "fluxer.pgSecretKey" -}}
+{{- if .Values.postgres.enabled -}}password{{- else -}}{{ .Values.postgres.external.passwordSecretKey }}{{- end -}}
+{{- end -}}
+
+{{- define "fluxer.publicOrigin" -}}
+{{- $port := int .Values.global.publicPort -}}
+{{- if or (and (eq .Values.global.publicScheme "https") (eq $port 443)) (and (eq .Values.global.publicScheme "http") (eq $port 80)) -}}
+{{- printf "%s://%s" .Values.global.publicScheme .Values.global.domain -}}
+{{- else -}}
+{{- printf "%s://%s:%d" .Values.global.publicScheme .Values.global.domain $port -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "fluxer.labels" -}}
 app.kubernetes.io/part-of: fluxer
 app.kubernetes.io/managed-by: {{ .Release.Service }}
@@ -360,3 +389,4 @@ spec:
   selector:
     {{- include "fluxer.selectorLabels" (dict "root" .root "component" .name) | nindent 4 }}
 {{- end -}}
+
