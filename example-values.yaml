@@ -47,10 +47,11 @@ valkey:
       memory: 1Gi
 
 
-seaweedfs:
+garage:
   storage:
-    size: 200Gi
-    storageClass: bulk-hdd
+    data:
+      size: 200Gi
+      storageClass: bulk-hdd
 
 livekit:
   media:
