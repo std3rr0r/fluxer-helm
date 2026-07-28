@@ -1,30 +1,6 @@
 {{- if and .Values.valkey.enabled (not .Values.valkey.external.url) }}
 {{- $name := include "fluxer.valkeyName" . -}}
-{{- $secretName := printf "%s-users" $name -}}
 {{- $user := .Values.valkey.username -}}
-{{- $existing := (lookup "v1" "Secret" .Release.Namespace $secretName) | default dict -}}
-{{- $data := $existing.data | default dict -}}
-{{- $pw := "" -}}
-{{- if .Values.valkey.password }}
-{{- $pw = .Values.valkey.password | b64enc }}
-{{- else if hasKey $data $user }}
-{{- $pw = get $data $user }}
-{{- else }}
-{{- $pw = randAlphaNum 32 | b64enc }}
-{{- end }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $secretName }}
-  labels:
-    {{- include "fluxer.labels" . | nindent 4 }}
-    app.kubernetes.io/component: valkey
-  annotations:
-    helm.sh/resource-policy: keep
-type: Opaque
-data:
-  {{ $user }}: {{ $pw }}
----
 apiVersion: valkey.io/v1alpha1
 kind: ValkeyCluster
 metadata:
@@ -59,9 +35,9 @@ spec:
     - name: {{ $user }}
       enabled: true
       passwordSecret:
-        name: {{ $secretName }}
+        name: {{ include "fluxer.secretName" . }}
         keys:
-          - {{ $user }}
+          - VALKEY_PASSWORD
       permissions: {{ required "valkey.permissions must not be empty: the operator builds the ACL literally, so a user with no rules can authenticate but gets NOPERM on every command" .Values.valkey.permissions | quote }}
   {{- with .Values.valkey.config }}
   config:

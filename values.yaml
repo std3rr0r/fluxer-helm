@@ -9,23 +9,12 @@ image:
   pullPolicy: IfNotPresent
   pullSecrets: []
 
+# All secrets come from an external secret (see README).
+# existingSecret overrides its name; default is "<release>-secrets".
 secrets:
   existingSecret: ""
   vapid:
-    publicKey: ""
-    privateKey: ""
     email: admin@example.com
-  meiliMasterKey: ""
-  sudoModeSecret: ""
-  connectionInitiationSecret: ""
-  gatewayRpcAuthToken: ""
-  mediaProxySecretKey: ""
-  mediaProxyUploadRelaySecretBase64: ""
-  adminSecretKeyBase: ""
-  adminOauthClientSecret: ""
-  klipyApiKey: ""
-  livekitApiKey: "fluxer"
-  livekitApiSecret: ""
 
 postgres:
   enabled: true
@@ -61,7 +50,6 @@ valkey:
   image: ""
   imagePullSecrets: []
   username: fluxer
-  password: ""
   permissions: "+@all ~* &*"
   prometheus: false
   tlsSecretName: ""
@@ -162,7 +150,6 @@ email:
     host: ""
     port: 587
     username: ""
-    password: ""
     secure: true
 
 captcha:

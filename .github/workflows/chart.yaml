@@ -11,8 +11,6 @@ env:
   CHART_DIR: .
   CI_SET: >-
     --set global.domain=ci.example.com
-    --set secrets.vapid.publicKey=ci-public
-    --set secrets.vapid.privateKey=ci-private
     --set httpRoute.parentRefs[0].name=ci-gateway
     --set httpRoute.parentRefs[0].namespace=gateway-system
 
@@ -36,8 +34,7 @@ jobs:
         run: |
           helm template ci "$CHART_DIR" \
             -f "$CHART_DIR/example-values.yaml" \
-            --set secrets.vapid.publicKey=ci-public \
-            --set secrets.vapid.privateKey=ci-private \
+            $CI_SET \
             > /tmp/example.yaml
 
       - name: Validate manifests against the Kubernetes API

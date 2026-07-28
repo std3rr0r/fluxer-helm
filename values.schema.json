@@ -74,24 +74,11 @@
         "vapid": {
           "type": "object",
           "properties": {
-            "publicKey": {
-              "type": "string"
-            },
-            "privateKey": {
-              "type": "string"
-            },
             "email": {
               "type": "string",
               "minLength": 3
             }
           }
-        },
-        "livekitApiKey": {
-          "type": "string",
-          "minLength": 1
-        },
-        "klipyApiKey": {
-          "type": "string"
         }
       }
     },
@@ -209,9 +196,6 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^[^_]"
-        },
-        "password": {
-          "type": "string"
         },
         "permissions": {
           "type": "string",

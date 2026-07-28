@@ -18,10 +18,6 @@
 {{- printf "%s-s3" (include "fluxer.garageName" .) -}}
 {{- end -}}
 
-{{- define "fluxer.garageAdminTokenSecretName" -}}
-{{- printf "%s-admin-token" (include "fluxer.garageName" .) -}}
-{{- end -}}
-
 {{- define "fluxer.pgClusterName" -}}
 {{- default (printf "%s-pg" (include "fluxer.fullname" .)) .Values.postgres.clusterName -}}
 {{- end -}}
@@ -32,10 +28,6 @@
 
 {{- define "fluxer.valkeyHost" -}}
 {{- printf "valkey-%s" (include "fluxer.valkeyName" .) -}}
-{{- end -}}
-
-{{- define "fluxer.valkeySecretName" -}}
-{{- printf "%s-users" (include "fluxer.valkeyName" .) -}}
 {{- end -}}
 
 {{- define "fluxer.pgHost" -}}
@@ -129,8 +121,8 @@ app.kubernetes.io/component: {{ .component }}
 - name: VALKEY_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "fluxer.valkeySecretName" . }}
-      key: {{ .Values.valkey.username }}
+      name: {{ include "fluxer.secretName" . }}
+      key: VALKEY_PASSWORD
 - name: FLUXER_KV_URL
   value: "redis://{{ .Values.valkey.username }}:$(VALKEY_PASSWORD)@{{ include "fluxer.valkeyHost" . }}:6379/0"
 {{- end }}
