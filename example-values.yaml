@@ -7,11 +7,6 @@ global:
 
 image:
   tag: v1 
-secrets:
-  vapid:
-    publicKey: "REPLACE_ME"    # from web-push generate-vapid-keys
-    privateKey: "REPLACE_ME"
-    email: admin@example.com
 
 postgres:
   instances: 3
@@ -76,7 +71,6 @@ email:
     host: smtp.example.com
     port: 587
     username: fluxer
-    password: "REPLACE_ME"
     secure: true
 
 services:
