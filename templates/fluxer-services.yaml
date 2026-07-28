@@ -62,10 +62,15 @@
   "root" $ "name" "app-proxy" "svc" .Values.services.appProxy "image" "fluxer-app-proxy-self-hosted"
   "replicas" .Values.services.appProxy.replicas "commonEnv" false
   "port" 8080
+  "sidecars" (list (dict
+    "name" "discovery-proxy"
+    "image" .Values.discoveryProxy.image
+    "args" (list "reverse-proxy" "--from" ":8088" "--to" (printf "%s-api:8080" $fullname))
+    "resources" (dict "requests" (dict "cpu" "10m" "memory" "16Mi") "limits" (dict "memory" "32Mi"))))
   "env" (list
     (dict "name" "FLUXER_APP_PROXY_HOST" "value" "0.0.0.0")
     (dict "name" "FLUXER_APP_PROXY_PORT" "value" "8080")
-    (dict "name" "DISCOVERY_UPSTREAM_URL" "value" (printf "http://%s-api:8080/.well-known/fluxer" $fullname))
+    (dict "name" "DISCOVERY_UPSTREAM_URL" "value" "http://127.0.0.1:8088/.well-known/fluxer")
     (dict "name" "PUBLIC_BOOTSTRAP_API_ENDPOINT" "value" "/api")
     (dict "name" "PUBLIC_BOOTSTRAP_API_PUBLIC_ENDPOINT" "value" (printf "%s/api" $origin)))) }}
 ---

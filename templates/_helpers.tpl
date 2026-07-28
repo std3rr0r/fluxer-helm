@@ -361,6 +361,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- with .sidecars }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .svc.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
