@@ -10,6 +10,14 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "fluxer.garageName" -}}
+{{- printf "%s-garage" (include "fluxer.fullname" .) -}}
+{{- end -}}
+
+{{- define "fluxer.garageS3SecretName" -}}
+{{- printf "%s-s3" (include "fluxer.garageName" .) -}}
+{{- end -}}
+
 {{- define "fluxer.pgClusterName" -}}
 {{- default (printf "%s-pg" (include "fluxer.fullname" .)) .Values.postgres.clusterName -}}
 {{- end -}}
@@ -143,20 +151,20 @@ app.kubernetes.io/component: {{ .component }}
       key: MEILI_MASTER_KEY
 
 - name: FLUXER_S3_ENDPOINT
-  value: "http://{{ $fullname }}-seaweedfs:8333"
+  value: "http://{{ include "fluxer.garageName" . }}:3900"
 - name: FLUXER_S3_PUBLIC_ENDPOINT
-  value: "http://{{ $fullname }}-seaweedfs:8333"
+  value: "http://{{ include "fluxer.garageName" . }}:3900"
 - name: FLUXER_S3_REGION
-  value: us-east-1
+  value: {{ .Values.garage.region | quote }}
 - name: FLUXER_S3_ACCESS_KEY_ID
   valueFrom:
     secretKeyRef:
-      name: {{ $secret }}
+      name: {{ include "fluxer.garageS3SecretName" . }}
       key: FLUXER_S3_ACCESS_KEY
 - name: FLUXER_S3_SECRET_ACCESS_KEY
   valueFrom:
     secretKeyRef:
-      name: {{ $secret }}
+      name: {{ include "fluxer.garageS3SecretName" . }}
       key: FLUXER_S3_SECRET_KEY
 - name: FLUXER_S3_FORCE_PATH_STYLE
   value: "true"
@@ -173,15 +181,15 @@ app.kubernetes.io/component: {{ .component }}
 - name: AWS_ACCESS_KEY_ID
   valueFrom:
     secretKeyRef:
-      name: {{ $secret }}
+      name: {{ include "fluxer.garageS3SecretName" . }}
       key: FLUXER_S3_ACCESS_KEY
 - name: AWS_SECRET_ACCESS_KEY
   valueFrom:
     secretKeyRef:
-      name: {{ $secret }}
+      name: {{ include "fluxer.garageS3SecretName" . }}
       key: FLUXER_S3_SECRET_KEY
 - name: AWS_DEFAULT_REGION
-  value: us-east-1
+  value: {{ .Values.garage.region | quote }}
 - name: AWS_EC2_METADATA_DISABLED
   value: "true"
 
