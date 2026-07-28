@@ -2,126 +2,758 @@
 {{- $fullname := include "fluxer.fullname" . -}}
 
 {{/* ---------------- api ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "api" "svc" .Values.services.api "image" "fluxer-api"
-  "replicas" .Values.services.api.replicas "commonEnv" true
-  "port" 8080 "probePath" "/_health"
-  "env" (list
-    (dict "name" "FLUXER_API_PORT" "value" "8080")
-    (dict "name" "FLUXER_API_PRESIGNED_ATTACHMENT_UPLOADS_ENABLED" "value" "true"))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-api
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.services.api.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.api.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.registry }}/fluxer-api:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" . | nindent 12 }}
+            - name: FLUXER_API_PORT
+              value: "8080"
+            - name: FLUXER_API_PRESIGNED_ATTACHMENT_UPLOADS_ENABLED
+              value: "true"
+            {{- with .Values.services.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            failureThreshold: 6
+          {{- with .Values.services.api.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "api") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-api
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
 ---
 {{/* ---------------- worker ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "worker" "svc" .Values.services.worker "image" "fluxer-api"
-  "replicas" .Values.services.worker.replicas "commonEnv" true
-  "workingDir" "/usr/src/app/fluxer_api"
-  "command" (list "./node_modules/.bin/tsx" "src/WorkerEntrypoint.ts")
-  "env" (list
-    (dict "name" "FLUXER_API_WORKER_MODE" "value" "all_lanes")
-    (dict "name" "FLUXER_API_WORKER_ENABLE_CRON_SCHEDULER" "value" "true")
-    (dict "name" "FLUXER_API_WORKER_ENABLE_VOICE_RECONCILIATION" "value" "true"))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-worker
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.services.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "worker") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.registry }}/fluxer-api:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /usr/src/app/fluxer_api
+          command:
+            - ./node_modules/.bin/tsx
+            - src/WorkerEntrypoint.ts
+          env:
+            {{- include "fluxer.commonEnv" . | nindent 12 }}
+            - name: FLUXER_API_WORKER_MODE
+              value: all_lanes
+            - name: FLUXER_API_WORKER_ENABLE_CRON_SCHEDULER
+              value: "true"
+            - name: FLUXER_API_WORKER_ENABLE_VOICE_RECONCILIATION
+              value: "true"
+            {{- with .Values.services.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.services.worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
 {{/* ---------------- gateway ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "gateway" "svc" .Values.services.gateway "image" "fluxer-gateway"
-  "replicas" .Values.services.gateway.replicas "commonEnv" true
-  "port" 8080 "probePath" "/_health"
-  "env" (list
-    (dict "name" "FLUXER_GATEWAY_PORT" "value" "8080")
-    (dict "name" "FLUXER_GATEWAY_MEDIA_PROXY_ENDPOINT" "value" (printf "%s/media" $origin))
-    (dict "name" "FLUXER_GATEWAY_STATIC_CDN_ENDPOINT" "value" $origin)
-    (dict "name" "FLUXER_GATEWAY_LOGGER_LEVEL" "value" .Values.services.gateway.logLevel))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-gateway
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.services.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "gateway") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.gateway.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.registry }}/fluxer-gateway:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" . | nindent 12 }}
+            - name: FLUXER_GATEWAY_PORT
+              value: "8080"
+            - name: FLUXER_GATEWAY_MEDIA_PROXY_ENDPOINT
+              value: {{ printf "%s/media" $origin | quote }}
+            - name: FLUXER_GATEWAY_STATIC_CDN_ENDPOINT
+              value: {{ $origin | quote }}
+            - name: FLUXER_GATEWAY_LOGGER_LEVEL
+              value: {{ .Values.services.gateway.logLevel | quote }}
+            {{- with .Values.services.gateway.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            failureThreshold: 6
+          {{- with .Values.services.gateway.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.gateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.gateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.gateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "gateway") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-gateway
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "gateway") | nindent 4 }}
 ---
 {{/* ---------------- media-proxy ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "media-proxy" "svc" .Values.services.mediaProxy "image" "fluxer-media-proxy"
-  "replicas" .Values.services.mediaProxy.replicas "commonEnv" true
-  "port" 8080
-  "env" (list
-    (dict "name" "FLUXER_MEDIA_PROXY_HOST" "value" "0.0.0.0")
-    (dict "name" "FLUXER_MEDIA_PROXY_PORT" "value" "8080")
-    (dict "name" "FLUXER_MEDIA_PROXY_MODE" "value" "upload")
-    (dict "name" "FLUXER_MEDIA_PROXY_STORAGE_BACKEND" "value" "s3"))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-media-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: media-proxy
+spec:
+  replicas: {{ .Values.services.mediaProxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "media-proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "media-proxy") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.mediaProxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: media-proxy
+          image: "{{ .Values.image.registry }}/fluxer-media-proxy:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" . | nindent 12 }}
+            - name: FLUXER_MEDIA_PROXY_HOST
+              value: 0.0.0.0
+            - name: FLUXER_MEDIA_PROXY_PORT
+              value: "8080"
+            - name: FLUXER_MEDIA_PROXY_MODE
+              value: upload
+            - name: FLUXER_MEDIA_PROXY_STORAGE_BACKEND
+              value: s3
+            {{- with .Values.services.mediaProxy.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.services.mediaProxy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.mediaProxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.mediaProxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.mediaProxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "media-proxy") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-media-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: media-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "media-proxy") | nindent 4 }}
 ---
-{{/* ---------------- static-proxy (no fluxer env in upstream compose) ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "static-proxy" "svc" .Values.services.staticProxy "image" "fluxer-static"
-  "replicas" .Values.services.staticProxy.replicas "commonEnv" false
-  "port" 8080 "env" (list)) }}
+{{/* ---------------- static-proxy (no shared fluxer env, like upstream compose) ---------------- */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-static-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: static-proxy
+spec:
+  replicas: {{ .Values.services.staticProxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "static-proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "static-proxy") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.staticProxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: static-proxy
+          image: "{{ .Values.image.registry }}/fluxer-static:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- with .Values.services.staticProxy.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.services.staticProxy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.staticProxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.staticProxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.staticProxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "static-proxy") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-static-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: static-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "static-proxy") | nindent 4 }}
 ---
-{{/* ---------------- app-proxy (own env only, like upstream) ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "app-proxy" "svc" .Values.services.appProxy "image" "fluxer-app-proxy-self-hosted"
-  "replicas" .Values.services.appProxy.replicas "commonEnv" false
-  "port" 8080
-  "volumes" (list
-    (dict "name" "caddy-config" "emptyDir" (dict))
-    (dict "name" "caddy-data" "emptyDir" (dict)))
-  "sidecars" (list (dict
-    "name" "discovery-proxy"
-    "image" .Values.discoveryProxy.image
-    "command" (list "caddy")
-    "args" (list "reverse-proxy" "--from" ":8088" "--to" (printf "%s-api:8080" $fullname))
-    "volumeMounts" (list
-      (dict "name" "caddy-config" "mountPath" "/config")
-      (dict "name" "caddy-data" "mountPath" "/data"))
-    "resources" (dict "requests" (dict "cpu" "10m" "memory" "16Mi") "limits" (dict "memory" "64Mi"))))
-  "env" (list
-    (dict "name" "FLUXER_APP_PROXY_HOST" "value" "0.0.0.0")
-    (dict "name" "FLUXER_APP_PROXY_PORT" "value" "8080")
-    (dict "name" "DISCOVERY_UPSTREAM_URL" "value" "http://127.0.0.1:8088/.well-known/fluxer")
-    (dict "name" "PUBLIC_BOOTSTRAP_API_ENDPOINT" "value" "/api")
-    (dict "name" "PUBLIC_BOOTSTRAP_API_PUBLIC_ENDPOINT" "value" (printf "%s/api" $origin)))) }}
+{{/* ---------------- app-proxy (own env only, plus discovery caddy sidecar) ---------------- */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-app-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app-proxy
+spec:
+  replicas: {{ .Values.services.appProxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "app-proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "app-proxy") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.appProxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app-proxy
+          image: "{{ .Values.image.registry }}/fluxer-app-proxy-self-hosted:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: FLUXER_APP_PROXY_HOST
+              value: 0.0.0.0
+            - name: FLUXER_APP_PROXY_PORT
+              value: "8080"
+            - name: DISCOVERY_UPSTREAM_URL
+              value: http://127.0.0.1:8088/.well-known/fluxer
+            - name: PUBLIC_BOOTSTRAP_API_ENDPOINT
+              value: /api
+            - name: PUBLIC_BOOTSTRAP_API_PUBLIC_ENDPOINT
+              value: {{ printf "%s/api" $origin | quote }}
+            {{- with .Values.services.appProxy.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.services.appProxy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: discovery-proxy
+          image: {{ .Values.discoveryProxy.image }}
+          command:
+            - caddy
+          args:
+            - reverse-proxy
+            - --from
+            - :8088
+            - --to
+            - {{ printf "%s-api:8080" $fullname }}
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /config
+            - name: caddy-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: caddy-config
+          emptyDir: {}
+        - name: caddy-data
+          emptyDir: {}
+      {{- with .Values.services.appProxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.appProxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.appProxy.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "app-proxy") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-app-proxy
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "app-proxy") | nindent 4 }}
 ---
 {{/* ---------------- admin ---------------- */}}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" "admin" "svc" .Values.services.admin "image" "fluxer-admin"
-  "replicas" .Values.services.admin.replicas "commonEnv" true
-  "port" 8080
-  "env" (list
-    (dict "name" "FLUXER_ADMIN_HOST" "value" "0.0.0.0")
-    (dict "name" "FLUXER_ADMIN_PORT" "value" "8080")
-    (dict "name" "FLUXER_ADMIN_BASE_PATH" "value" "/admin")
-    (dict "name" "FLUXER_API_ENDPOINT" "value" (printf "http://%s-api:8080" $fullname))
-    (dict "name" "FLUXER_ADMIN_ENDPOINT" "value" (printf "%s/admin" $origin))
-    (dict "name" "FLUXER_APP_ENDPOINT" "value" $origin)
-    (dict "name" "FLUXER_STATIC_CDN_ENDPOINT" "value" $origin)
-    (dict "name" "FLUXER_ADMIN_OAUTH_REDIRECT_URI" "value" (printf "%s/admin/oauth2_callback" $origin)))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-admin
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  replicas: {{ .Values.services.admin.replicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" . "component" "admin") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" . "component" "admin") | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" . }}
+        {{- with .Values.services.admin.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: admin
+          image: "{{ .Values.image.registry }}/fluxer-admin:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" . | nindent 12 }}
+            - name: FLUXER_ADMIN_HOST
+              value: 0.0.0.0
+            - name: FLUXER_ADMIN_PORT
+              value: "8080"
+            - name: FLUXER_ADMIN_BASE_PATH
+              value: /admin
+            - name: FLUXER_API_ENDPOINT
+              value: {{ printf "http://%s-api:8080" $fullname | quote }}
+            - name: FLUXER_ADMIN_ENDPOINT
+              value: {{ printf "%s/admin" $origin | quote }}
+            - name: FLUXER_APP_ENDPOINT
+              value: {{ $origin | quote }}
+            - name: FLUXER_STATIC_CDN_ENDPOINT
+              value: {{ $origin | quote }}
+            - name: FLUXER_ADMIN_OAUTH_REDIRECT_URI
+              value: {{ printf "%s/admin/oauth2_callback" $origin | quote }}
+            {{- with .Values.services.admin.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.services.admin.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.services.admin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.admin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.services.admin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 ---
-{{ include "fluxer.service" (dict "root" $ "name" "admin") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-admin
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "fluxer.selectorLabels" (dict "root" . "component" "admin") | nindent 4 }}
 ---
-{{/* ---------------- router/shard microservices ---------------- */}}
+{{/* ---------------- router/shard microservices ----------------
+     snowflakes/users/messages/gifs/unfurl each get one "router" Deployment
+     plus svcShardCount "shard" Deployments. They are structurally identical,
+     so they are generated with a range loop rather than copied by hand. */}}
 {{- range $svcName := list "snowflakes" "users" "messages" "gifs" "unfurl" }}
 {{- $cfg := index $.Values.services $svcName }}
-{{- $gifsEnv := list }}
-{{- if eq $svcName "gifs" }}
-{{- $gifsEnv = list
-      (dict "name" "FLUXER_SVC_NAME" "value" "gifs")
-      (dict "name" "FLUXER_MEDIA_PROXY_PUBLIC_ENDPOINT" "value" (printf "%s/media" $origin)) }}
-{{- end }}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" $svcName "svc" $cfg "image" (printf "fluxer-%s" $svcName)
-  "replicas" $cfg.routerReplicas "commonEnv" true
-  "env" (concat $gifsEnv (list (dict "name" "FLUXER_SVC_MODE" "value" "router")))) }}
----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-{{ $svcName }}
+  labels:
+    {{- include "fluxer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $svcName }}
+spec:
+  replicas: {{ $cfg.routerReplicas }}
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" $ "component" $svcName) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" $ "component" $svcName) | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" $ }}
+        {{- with $cfg.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $svcName }}
+          image: "{{ $.Values.image.registry }}/fluxer-{{ $svcName }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" $ | nindent 12 }}
+            {{- if eq $svcName "gifs" }}
+            - name: FLUXER_SVC_NAME
+              value: gifs
+            - name: FLUXER_MEDIA_PROXY_PUBLIC_ENDPOINT
+              value: {{ printf "%s/media" $origin | quote }}
+            {{- end }}
+            - name: FLUXER_SVC_MODE
+              value: router
+            {{- with $cfg.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $cfg.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $cfg.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- range $shard := until (int $.Values.svcShardCount) }}
-{{ include "fluxer.deployment" (dict
-  "root" $ "name" (printf "%s-shard-%d" $svcName $shard) "svc" $cfg
-  "image" (printf "fluxer-%s" $svcName)
-  "replicas" 1 "commonEnv" true
-  "env" (concat $gifsEnv (list
-    (dict "name" "FLUXER_SVC_MODE" "value" "shard")
-    (dict "name" "FLUXER_SVC_SHARD_ID" "value" (printf "%d" $shard))))) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-{{ $svcName }}-shard-{{ $shard }}
+  labels:
+    {{- include "fluxer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $svcName }}-shard-{{ $shard }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "fluxer.selectorLabels" (dict "root" $ "component" (printf "%s-shard-%d" $svcName $shard)) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fluxer.selectorLabels" (dict "root" $ "component" (printf "%s-shard-%d" $svcName $shard)) | nindent 8 }}
+      annotations:
+        checksum/secrets: {{ include "fluxer.secretsChecksum" $ }}
+        {{- with $cfg.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $svcName }}-shard-{{ $shard }}
+          image: "{{ $.Values.image.registry }}/fluxer-{{ $svcName }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          env:
+            {{- include "fluxer.commonEnv" $ | nindent 12 }}
+            {{- if eq $svcName "gifs" }}
+            - name: FLUXER_SVC_NAME
+              value: gifs
+            - name: FLUXER_MEDIA_PROXY_PUBLIC_ENDPOINT
+              value: {{ printf "%s/media" $origin | quote }}
+            {{- end }}
+            - name: FLUXER_SVC_MODE
+              value: shard
+            - name: FLUXER_SVC_SHARD_ID
+              value: {{ $shard | quote }}
+            {{- with $cfg.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $cfg.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $cfg.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- if ne $svcName "unfurl" }}
 ---
 {{- end }}
 {{- end }}
