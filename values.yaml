@@ -9,8 +9,10 @@ image:
   pullPolicy: IfNotPresent
   pullSecrets: []
 
-# All secrets come from an external secret (see README).
-# existingSecret overrides its name; default is "<release>-secrets".
+# sidecar for app-proxy to add the required headers
+discoveryProxy:
+  image: caddy:2.8-alpine
+
 secrets:
   existingSecret: ""
   vapid:
