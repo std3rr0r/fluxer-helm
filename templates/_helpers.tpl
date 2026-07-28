@@ -364,6 +364,10 @@ spec:
         {{- with .sidecars }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- with .volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .svc.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

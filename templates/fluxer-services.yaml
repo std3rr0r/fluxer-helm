@@ -62,11 +62,18 @@
   "root" $ "name" "app-proxy" "svc" .Values.services.appProxy "image" "fluxer-app-proxy-self-hosted"
   "replicas" .Values.services.appProxy.replicas "commonEnv" false
   "port" 8080
+  "volumes" (list
+    (dict "name" "caddy-config" "emptyDir" (dict))
+    (dict "name" "caddy-data" "emptyDir" (dict)))
   "sidecars" (list (dict
     "name" "discovery-proxy"
     "image" .Values.discoveryProxy.image
+    "command" (list "caddy")
     "args" (list "reverse-proxy" "--from" ":8088" "--to" (printf "%s-api:8080" $fullname))
-    "resources" (dict "requests" (dict "cpu" "10m" "memory" "16Mi") "limits" (dict "memory" "32Mi"))))
+    "volumeMounts" (list
+      (dict "name" "caddy-config" "mountPath" "/config")
+      (dict "name" "caddy-data" "mountPath" "/data"))
+    "resources" (dict "requests" (dict "cpu" "10m" "memory" "16Mi") "limits" (dict "memory" "64Mi"))))
   "env" (list
     (dict "name" "FLUXER_APP_PROXY_HOST" "value" "0.0.0.0")
     (dict "name" "FLUXER_APP_PROXY_PORT" "value" "8080")
