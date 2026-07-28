@@ -3,7 +3,7 @@ name: fluxer
 description: >-
  Fluxer Self-hosted. This is a community project and not affiliated with Fluxer Platform AB.
 type: application
-version: 0.0.10
+version: 0.0.11
 appVersion: "v1"
 sources:
   - https://github.com/fluxerapp/fluxer

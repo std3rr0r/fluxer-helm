@@ -19,7 +19,6 @@ data:
         - {{ . }}
         {{- end }}
     webhook:
-      api_key: {{ .Values.secrets.livekitApiKey }}
       urls:
         - http://{{ include "fluxer.fullname" . }}-api:8080/webhooks/livekit
 ---
@@ -104,13 +103,20 @@ spec:
           image: {{ .Values.livekit.image }}
           args: ["--config", "/etc/livekit.yaml"]
           env:
+            - name: LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fluxer.secretName" . }}
+                  key: LIVEKIT_API_KEY
             - name: LIVEKIT_API_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "fluxer.secretName" . }}
                   key: LIVEKIT_API_SECRET
             - name: LIVEKIT_KEYS
-              value: "{{ .Values.secrets.livekitApiKey }}: $(LIVEKIT_API_SECRET)"
+              value: "$(LIVEKIT_API_KEY): $(LIVEKIT_API_SECRET)"
+            - name: LIVEKIT_WEBHOOK_API_KEY
+              value: "$(LIVEKIT_API_KEY)"
           ports:
             - containerPort: 7880
               name: signal
