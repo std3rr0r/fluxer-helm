@@ -18,6 +18,10 @@
 {{- printf "%s-s3" (include "fluxer.garageName" .) -}}
 {{- end -}}
 
+{{- define "fluxer.garageAdminTokenSecretName" -}}
+{{- printf "%s-admin-token" (include "fluxer.garageName" .) -}}
+{{- end -}}
+
 {{- define "fluxer.pgClusterName" -}}
 {{- default (printf "%s-pg" (include "fluxer.fullname" .)) .Values.postgres.clusterName -}}
 {{- end -}}
