@@ -1,3 +1,25 @@
+{{- $adminTokenSecret := include "fluxer.garageAdminTokenSecretName" . }}
+{{- $existingAdmin := (lookup "v1" "Secret" .Release.Namespace $adminTokenSecret) | default dict }}
+{{- $existingAdminData := $existingAdmin.data | default dict }}
+{{- $adminToken := "" }}
+{{- if hasKey $existingAdminData "admin-token" }}
+{{- $adminToken = get $existingAdminData "admin-token" }}
+{{- else }}
+{{- $adminToken = randAlphaNum 64 | b64enc }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $adminTokenSecret }}
+  labels:
+    {{- include "fluxer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: garage
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  admin-token: {{ $adminToken | quote }}
+---
 apiVersion: garage.rajsingh.info/v1beta2
 kind: GarageCluster
 metadata:
@@ -34,6 +56,11 @@ spec:
     region: {{ .Values.garage.region | quote }}
   admin:
     bindPort: 3903
+    adminTokenSecretRef:
+      name: {{ $adminTokenSecret }}
+      key: admin-token
+  layoutManagement:
+    autoApply: true
   database:
     engine: lmdb
   {{- with .Values.garage.extraSpec }}
