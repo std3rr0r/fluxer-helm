@@ -370,6 +370,9 @@
             "annotations": {
               "type": "object"
             },
+            "labels": {
+              "type": "object"
+            },
             "nodePortTCP": {
               "type": "integer",
               "minimum": 30000,

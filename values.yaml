@@ -116,6 +116,7 @@ livekit:
   media:
     mode: LoadBalancer
     annotations: {}
+    labels: {}
     nodePortTCP: 30881
     nodePortUDP: 30882
   resources: {}
