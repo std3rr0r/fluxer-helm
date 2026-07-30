@@ -1,9 +1,19 @@
 # fluxer-helm
-helm chart for deploying fluxer chat
+opiniated helm chart for deploying fluxer chat.
 
 This is a community project and not affiliated with Fluxer Platform AB.
 
-This is the externalSecret structure:
+## Dependencies
+
+### Operators
+This chart requires the following operators to be installed in the cluster:
+  - https://github.com/valkey-io/valkey-helm
+  - https://github.com/rajsinghtech/garage-operator
+  - https://github.com/cloudnative-pg/cloudnative-pg
+
+### Secret
+This Chart requires a secret to be present in the namespace.  
+I used this command to generate the secret:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
